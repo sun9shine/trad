@@ -33,6 +33,7 @@ import { SOLANA } from '../utils/constants';
 import { TokenInfo, ExecutionResult, TradeSignal } from '../utils/types';
 import { i18n } from '../i18n';
 import { logger } from '../utils/logger';
+import { RaydiumAccountResolver } from './raydium-accounts';
 import axios from 'axios';
 import bs58 from 'bs58';
 
@@ -40,6 +41,7 @@ export class SolanaSniper {
   private connection: Connection;
   private wallet: Keypair;
   private jitoBlockEngineUrl: string;
+  private accountResolver: RaydiumAccountResolver;
 
   constructor() {
     this.connection = new Connection(config.solana.rpcUrl, {
@@ -53,6 +55,7 @@ export class SolanaSniper {
     );
     
     this.jitoBlockEngineUrl = config.solana.jito.blockEngineUrl;
+    this.accountResolver = new RaydiumAccountResolver(this.connection);
   }
 
   /**
@@ -192,8 +195,8 @@ export class SolanaSniper {
   }
 
   /**
-   * Build Raydium AMM V4 swap instruction
-   * بناء تعليمة تبادل Raydium AMM V4
+   * Build Raydium AMM V4 swap instruction with FULL account resolution
+   * بناء تعليمة تبادل Raydium AMM V4 مع حل جميع الحسابات
    */
   private async buildRaydiumSwapInstruction(
     poolAddress: string,
@@ -202,7 +205,7 @@ export class SolanaSniper {
     maxSlippagePercent: number
   ): Promise<TransactionInstruction> {
     const amountIn = BigInt(Math.floor(amountInSol * LAMPORTS_PER_SOL));
-    const minAmountOut = BigInt(0); // Calculated with slippage in production
+    const minAmountOut = BigInt(0); // For speed; production: use Jupiter quote
 
     // Raydium AMM V4 SwapBaseIn instruction layout
     // Discriminator(1) + AmountIn(8) + MinAmountOut(8) = 17 bytes
@@ -211,18 +214,33 @@ export class SolanaSniper {
     data.writeBigUInt64LE(amountIn, 1);
     data.writeBigUInt64LE(minAmountOut, 9);
 
-    // In production, resolve all accounts from pool state
-    // This is a simplified structure showing the key accounts
+    // Resolve ALL 17 accounts from on-chain pool state
+    const accounts = await this.accountResolver.resolveSwapAccounts(
+      poolAddress,
+      this.wallet.publicKey,
+      true // isBuy (SOL → Token)
+    );
+
+    // Raydium AMM V4 swap account order (exact layout required)
     const keys = [
-      { pubkey: new PublicKey(SOLANA.TOKEN_PROGRAM), isSigner: false, isWritable: false },
-      { pubkey: new PublicKey(poolAddress), isSigner: false, isWritable: true },
-      { pubkey: this.wallet.publicKey, isSigner: true, isWritable: true },
-      // Additional accounts would be resolved from pool state:
-      // amm_authority, amm_open_orders, amm_target_orders,
-      // pool_coin_token_account, pool_pc_token_account,
-      // serum_program, serum_market, serum_bids, serum_asks,
-      // serum_event_queue, serum_coin_vault, serum_pc_vault,
-      // serum_vault_signer, user_source_token, user_destination_token
+      { pubkey: accounts.tokenProgram, isSigner: false, isWritable: false },
+      { pubkey: accounts.ammId, isSigner: false, isWritable: true },
+      { pubkey: accounts.ammAuthority, isSigner: false, isWritable: false },
+      { pubkey: accounts.ammOpenOrders, isSigner: false, isWritable: true },
+      { pubkey: accounts.ammTargetOrders, isSigner: false, isWritable: true },
+      { pubkey: accounts.poolCoinTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: accounts.poolPcTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: accounts.serumProgramId, isSigner: false, isWritable: false },
+      { pubkey: accounts.serumMarket, isSigner: false, isWritable: true },
+      { pubkey: accounts.serumBids, isSigner: false, isWritable: true },
+      { pubkey: accounts.serumAsks, isSigner: false, isWritable: true },
+      { pubkey: accounts.serumEventQueue, isSigner: false, isWritable: true },
+      { pubkey: accounts.serumCoinVault, isSigner: false, isWritable: true },
+      { pubkey: accounts.serumPcVault, isSigner: false, isWritable: true },
+      { pubkey: accounts.serumVaultSigner, isSigner: false, isWritable: false },
+      { pubkey: accounts.userSourceToken, isSigner: false, isWritable: true },
+      { pubkey: accounts.userDestinationToken, isSigner: false, isWritable: true },
+      { pubkey: accounts.userOwner, isSigner: true, isWritable: false },
     ];
 
     return new TransactionInstruction({
