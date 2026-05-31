@@ -1,0 +1,49 @@
+# ============================================
+# TRAD Sniper Bot - Docker Compose
+# ============================================
+
+version: '3.8'
+
+services:
+  trad-bot:
+    build: .
+    container_name: trad-sniper-bot
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3847:3847"  # Health check & Dashboard
+    volumes:
+      - ./data:/app/data      # Persistent database
+      - ./logs:/app/logs      # Log files
+      - ./.vault:/app/.vault  # Encrypted keys (optional)
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '2.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3847/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Optional: Redis for shared state (multi-instance)
+  redis:
+    image: redis:7-alpine
+    container_name: trad-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+volumes:
+  redis-data:

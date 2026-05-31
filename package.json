@@ -8,7 +8,13 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "lint": "eslint src/**/*.ts",
-    "paper": "PAPER_TRADING=true ts-node src/index.ts"
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest --run --coverage",
+    "paper": "TRADING_MODE=paper ts-node src/index.ts",
+    "docker:build": "docker build -t trad-bot .",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
   },
   "dependencies": {
     "@solana/web3.js": "^1.91.0",
@@ -34,7 +40,9 @@
     "ts-node": "^10.9.2",
     "eslint": "^8.56.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0"
+    "@typescript-eslint/parser": "^7.0.0",
+    "vitest": "^1.3.0",
+    "@vitest/coverage-v8": "^1.3.0"
   },
   "engines": {
     "node": ">=18.0.0"
