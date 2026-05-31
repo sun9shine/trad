@@ -1,18 +1,18 @@
 /**
  * ============================================
- * Sui Sniper - Cetus/BlueMove Execution
- * قناص Sui - تنفيذ على Cetus/BlueMove
+ * Sui Sniper - Cetus SDK + DeepBook + Sponsored (v2)
+ * قناص Sui - Cetus SDK + DeepBook + مدعوم (v2)
  * ============================================
- * 
- * Implements token sniping on Sui Move via:
- * - Cetus CLMM concentrated liquidity swaps
- * - BlueMove DEX router swaps
- * - Dynamic gas budget calculation
- * - Emergency sell for anti-rug protection
+ *
+ * Enhanced Sui sniping with:
+ * - Cetus SDK for accurate swap quotes and routing
+ * - DeepBook V2 orderbook for better pricing comparison
+ * - Sponsored transactions for zero-gas emergency exits
+ * - Automatic DEX selection (best price wins)
  */
 
-import { 
-  SuiClient, 
+import {
+  SuiClient,
   SuiTransactionBlockResponse,
 } from '@mysten/sui.js/client';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
@@ -22,19 +22,20 @@ import { SUI } from '../utils/constants';
 import { TokenInfo, ExecutionResult, TradeSignal } from '../utils/types';
 import { i18n } from '../i18n';
 import { logger } from '../utils/logger';
-
-// Cetus CLMM swap function path
-const CETUS_SWAP_FUNCTION = `${SUI.CETUS_CLMM_PACKAGE}::pool::swap`;
-const BLUEMOVE_SWAP_FUNCTION = `${SUI.BLUEMOVE_PACKAGE}::router::swap_exact_input`;
+import { CetusSDK } from './cetus-sdk';
+import { DeepBookV2 } from './deepbook-v2';
+import { SuiSponsoredTx } from './sui-sponsored';
 
 export class SuiSniper {
   private client: SuiClient;
   private keypair: Ed25519Keypair;
+  private cetus: CetusSDK;
+  private deepbook: DeepBookV2;
+  private sponsored: SuiSponsoredTx;
 
   constructor() {
     this.client = new SuiClient({ url: config.sui.rpcUrl });
-    
-    // Load keypair from private key
+
     if (config.sui.privateKey) {
       this.keypair = Ed25519Keypair.fromSecretKey(
         Buffer.from(config.sui.privateKey, 'hex')
@@ -42,6 +43,11 @@ export class SuiSniper {
     } else {
       this.keypair = new Ed25519Keypair(); // Dummy for paper trading
     }
+
+    // Initialize enhanced modules
+    this.cetus = new CetusSDK(this.client);
+    this.deepbook = new DeepBookV2(this.client);
+    this.sponsored = new SuiSponsoredTx();
   }
 
   /**

@@ -32,6 +32,9 @@ import { EVM } from '../utils/constants';
 import { TokenInfo, ExecutionResult, TradeSignal } from '../utils/types';
 import { i18n } from '../i18n';
 import { logger } from '../utils/logger';
+import { TenderlySimulator } from './tenderly-sim';
+import { UniswapV3Router, SwapRoute } from './uniswap-router';
+import { TaxSimulator } from './tax-simulator';
 import axios from 'axios';
 
 // Uniswap V2 Router ABI (swap functions)
@@ -61,54 +64,110 @@ export class EVMSniper {
   private bnbWallet: Wallet;
   private flashbotsProvider: JsonRpcProvider;
 
+  // --- Enhanced Modules ---
+  private tenderly: TenderlySimulator;
+  private v3Router: UniswapV3Router;
+  private taxSimulator: TaxSimulator;
+
   constructor() {
     this.baseProvider = new JsonRpcProvider(config.base.rpcUrl);
     this.bnbProvider = new JsonRpcProvider(config.bnb.rpcUrl);
     this.baseWallet = new Wallet(config.base.privateKey || '', this.baseProvider);
     this.bnbWallet = new Wallet(config.bnb.privateKey || '', this.bnbProvider);
     this.flashbotsProvider = new JsonRpcProvider(config.base.flashbotsRpc);
+
+    // Initialize enhancement modules
+    this.tenderly = new TenderlySimulator();
+    this.v3Router = new UniswapV3Router();
+    this.taxSimulator = new TaxSimulator();
   }
 
   /**
-   * Execute a snipe buy on EVM chain
-   * تنفيذ شراء قنص على سلسلة EVM
+   * Execute a snipe buy on EVM chain (ENHANCED with V3 routing + Tenderly + Tax check)
+   * تنفيذ شراء قنص على سلسلة EVM (محسّن مع توجيه V3 + Tenderly + فحص الضرائب)
    */
   async snipeBuy(signal: TradeSignal): Promise<ExecutionResult> {
     const token = signal.token;
-    const isBase = token.chain === 'base';
+    const chain = token.chain as 'base' | 'bnb';
+    const isBase = chain === 'base';
     const wallet = isBase ? this.baseWallet : this.bnbWallet;
     const provider = isBase ? this.baseProvider : this.bnbProvider;
 
     try {
-      // Determine router based on DEX
       const routerAddress = this.getRouterAddress(token.dex, token.chain);
       const wethAddress = this.getWETHAddress(token.chain);
-      
-      // Calculate amount with slippage
       const amountInWei = parseEther(signal.amount.toString());
-      const minAmountOut = await this.calculateMinOutput(
-        routerAddress, wethAddress, token.address, 
-        amountInWei, signal.maxSlippage, provider
-      );
 
-      // Build swap transaction
-      const router = new Contract(routerAddress, ROUTER_V2_ABI, wallet);
-      const deadline = Math.floor(Date.now() / 1000) + 60; // 60 second deadline
+      // ---- STEP 1: Tax Detection (skip if too slow) ----
+      const taxResult = await this.taxSimulator.detectTax(token.address, token.poolAddress, chain);
+      if (taxResult.hasTax && taxResult.maxTaxPercent > 25) {
+        logger.warn(i18n.t('system', 'warning', {
+          message: `Token ${token.address.slice(0, 10)} has ${taxResult.maxTaxPercent}% tax - skipping`,
+        }));
+        return { success: false, error: `Tax too high: ${taxResult.maxTaxPercent}%`, chain: token.chain, timestamp: Date.now() };
+      }
 
-      // Get optimal gas parameters
-      const gasParams = await this.getOptimalGasParams(provider, signal.priority);
+      // ---- STEP 2: Find Best Route (V3 multi-hop vs V2 direct) ----
+      let useV3Route: SwapRoute | null = null;
+      let minAmountOut: bigint = 0n;
 
-      // Execute swap
-      const tx: TransactionResponse = await router.swapExactETHForTokens(
-        minAmountOut,
-        [wethAddress, token.address],
-        wallet.address,
-        deadline,
-        {
-          value: amountInWei,
-          ...gasParams,
+      // Try V3 routing for potentially better price
+      useV3Route = await this.v3Router.findBestRoute(wethAddress, token.address, amountInWei, chain);
+
+      if (useV3Route && useV3Route.estimatedOutput > 0n) {
+        minAmountOut = this.v3Router.calculateMinOutput(useV3Route.estimatedOutput, signal.maxSlippage);
+      } else {
+        // Fallback to V2 quote
+        minAmountOut = await this.calculateMinOutput(routerAddress, wethAddress, token.address, amountInWei, signal.maxSlippage, provider);
+      }
+
+      // ---- STEP 3: Tenderly Simulation (if enabled) ----
+      if (this.tenderly.getIsEnabled() && useV3Route) {
+        const calldata = this.v3Router.buildExactInputCalldata(useV3Route, wallet.address, amountInWei, minAmountOut);
+        const simResult = await this.tenderly.simulateSwap(chain, wallet.address, EVM.UNISWAP_V3_ROUTER, calldata, amountInWei);
+
+        if (!simResult.success) {
+          logger.warn(i18n.t('system', 'warning', { message: `Tenderly sim reverted: ${simResult.revertReason}` }));
+          // Fall back to V2 if V3 simulation fails
+          useV3Route = null;
         }
-      );
+      }
+
+      // ---- STEP 4: Execute Swap ----
+      const gasParams = await this.getOptimalGasParams(provider, signal.priority);
+      let tx: TransactionResponse;
+
+      if (useV3Route) {
+        // Execute via Uniswap V3 exactInput
+        const v3Router = new Contract(EVM.UNISWAP_V3_ROUTER, ROUTER_V3_ABI, wallet);
+
+        if (useV3Route.hops === 1) {
+          tx = await v3Router.exactInputSingle({
+            tokenIn: wethAddress,
+            tokenOut: token.address,
+            fee: useV3Route.fees[0],
+            recipient: wallet.address,
+            amountIn: amountInWei,
+            amountOutMinimum: minAmountOut,
+            sqrtPriceLimitX96: 0n,
+          }, { value: amountInWei, ...gasParams });
+        } else {
+          tx = await v3Router.exactInput({
+            path: useV3Route.path,
+            recipient: wallet.address,
+            amountIn: amountInWei,
+            amountOutMinimum: minAmountOut,
+          }, { value: amountInWei, ...gasParams });
+        }
+      } else {
+        // Fallback: V2 swap
+        const router = new Contract(routerAddress, ROUTER_V2_ABI, wallet);
+        const deadline = Math.floor(Date.now() / 1000) + 60;
+        tx = await router.swapExactETHForTokens(
+          minAmountOut, [wethAddress, token.address], wallet.address, deadline,
+          { value: amountInWei, ...gasParams }
+        );
+      }
 
       logger.info(i18n.t('sniper', 'buyExecuted', {
         amount: signal.amount.toString(),
@@ -117,41 +176,18 @@ export class EVMSniper {
         tx: tx.hash,
       }));
 
-      // Wait for confirmation
       const receipt = await tx.wait(1);
 
       if (receipt && receipt.status === 1) {
         logger.info(i18n.t('sniper', 'sniped', { tx: tx.hash }));
-        return {
-          success: true,
-          txHash: tx.hash,
-          gasUsed: Number(receipt.gasUsed),
-          chain: token.chain,
-          timestamp: Date.now(),
-        };
+        return { success: true, txHash: tx.hash, gasUsed: Number(receipt.gasUsed), chain: token.chain, timestamp: Date.now() };
       }
 
-      return {
-        success: false,
-        txHash: tx.hash,
-        error: 'Transaction reverted',
-        chain: token.chain,
-        timestamp: Date.now(),
-      };
-
+      return { success: false, txHash: tx.hash, error: 'Transaction reverted', chain: token.chain, timestamp: Date.now() };
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      logger.error(i18n.t('sniper', 'transactionFailed', { 
-        reason: errMsg, 
-        chain: token.chain 
-      }));
-      
-      return {
-        success: false,
-        error: errMsg,
-        chain: token.chain,
-        timestamp: Date.now(),
-      };
+      logger.error(i18n.t('sniper', 'transactionFailed', { reason: errMsg, chain: token.chain }));
+      return { success: false, error: errMsg, chain: token.chain, timestamp: Date.now() };
     }
   }
 
