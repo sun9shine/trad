@@ -7,137 +7,136 @@
 
 ---
 
-## 📋 Table of Contents / جدول المحتويات
+## 📋 جدول المحتويات
 
-- [Overview](#overview)
-- [System Architecture](#system-architecture)
-- [Supported Chains & DEXs](#supported-chains--dexs)
-- [Features](#features)
-- [Setup Guide](#setup-guide)
-- [Configuration](#configuration)
-- [Running the Bot](#running-the-bot)
-- [Telegram Commands](#telegram-commands)
-- [Security Considerations](#security-considerations)
-
----
-
-## Overview
-
-**TRAD** is a high-performance, multi-chain memecoin sniper bot with built-in anti-rug protection, bilingual interface (Arabic/English), and advanced risk management. It operates across Solana, Base, Sui, and BNB Chain with ultra-low latency execution.
-
-**تراد** هو بوت عالي الأداء لقنص العملات الميمية متعدد السلاسل مع حماية مدمجة من سحب البساط، وواجهة ثنائية اللغة (عربي/إنجليزي)، وإدارة مخاطر متقدمة.
+- [نظرة عامة](#نظرة-عامة)
+- [المعمارية](#المعمارية)
+- [السلاسل والمنصات المدعومة](#السلاسل-والمنصات-المدعومة)
+- [خطوات التشغيل الكاملة](#خطوات-التشغيل-الكاملة)
+- [الإعدادات](#الإعدادات)
+- [تشغيل البوت](#تشغيل-البوت)
+- [كيف تتحول الأرباح إليك](#كيف-تتحول-الأرباح-إليك)
+- [أوامر تيليجرام](#أوامر-تيليجرام)
+- [تحذيرات أمنية](#تحذيرات-أمنية)
 
 ---
 
-## System Architecture
+## نظرة عامة
+
+**TRAD** بوت قنص عملات ميمية يعمل على 4 سلاسل بلوكتشين، يكتشف العملات الجديدة ويشتريها خلال ملي ثوانٍ، ثم يبيعها تلقائياً عند تحقق الربح أو لحمايتك من سحب البساط.
+
+**كيف يربح؟** يشتري العملة لحظة إنشاء السيولة (قبل الجميع)، ثم يبيعها عندما يرتفع السعر. الأرباح تبقى **في محفظتك مباشرة** كعملة أصلية (SOL/ETH/BNB/SUI).
+
+---
+
+## المعمارية
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      MAIN ORCHESTRATOR                           │
-│                    (Event-Driven Pipeline)                       │
-└───────┬────────────────────┬────────────────────┬───────────────┘
-        │                    │                    │
-┌───────▼───────┐   ┌───────▼───────┐   ┌───────▼───────┐
-│   SCANNER     │   │   SECURITY    │   │   TELEGRAM    │
-│ (Discovery)   │   │   (Auditor)   │   │   (Notify)    │
-│               │   │               │   │               │
-│ • Solana gRPC │   │ • Mint Check  │   │ • Alerts      │
-│ • Base WS     │   │ • LP Lock     │   │ • Commands    │
-│ • Sui Events  │   │ • Honeypot    │   │ • Reports     │
-│ • BNB WS      │   │ • Holders     │   │               │
-└───────┬───────┘   └───────┬───────┘   └───────────────┘
-        │                    │
-        ▼                    ▼
+│                    المنسق الرئيسي (Orchestrator v2)               │
+└───────┬─────────────┬─────────────┬─────────────┬───────────────┘
+        │             │             │             │
+   ┌────▼────┐  ┌─────▼─────┐ ┌────▼────┐  ┌────▼────┐
+   │ الماسح  │  │ المدقق    │ │ القناص  │  │تيليجرام │
+   │Scanner │  │ Auditor   │ │ Sniper  │  │  Bot    │
+   │         │  │           │ │         │  │         │
+   │• gRPC   │  │• Mint     │ │• Jito   │  │• تنبيهات│
+   │• WS     │  │• LP Lock  │ │• V3 Route│ │• أوامر │
+   │• Events │  │• Honeypot │ │• Cetus  │  │• تقارير │
+   └────┬────┘  └─────┬─────┘ └────┬────┘  └─────────┘
+        │             │             │
+        ▼             ▼             ▼
 ┌─────────────────────────────────────────┐
-│             EXECUTION ENGINE            │
-│                                         │
-│  ┌──────────┐  ┌──────────┐  ┌───────┐ │
-│  │ Solana   │  │  EVM     │  │Mempool│ │
-│  │ Sniper   │  │  Sniper  │  │Monitor│ │
-│  │(Jito)    │  │(Flashbot)│  │(Anti) │ │
-│  └──────────┘  └──────────┘  └───────┘ │
-└───────────────────┬─────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────┐
-│          RISK MANAGEMENT                │
-│                                         │
-│  • Position Manager (Trailing Stop)     │
-│  • Paper Trading (Simulation)           │
-│  • Daily Limits & PnL Tracking          │
-└─────────────────────────────────────────┘
+│         إدارة المخاطر + مراقب Mempool    │
+│  • Trailing Stop    • Anti-Rug          │
+│  • Take Profit      • Emergency Exit    │
+│  • Paper Trading    • Auto-Blacklist    │
+└───────────────────────┬─────────────────┘
+                        │
+                        ▼
+              💰 أرباحك في محفظتك
 ```
 
-**Data Flow:** `RPC/gRPC → Scanner → Auditor (<5ms) → Sniper → Position Manager ↔ Mempool Monitor`
+---
+
+## السلاسل والمنصات المدعومة
+
+| السلسلة | المنصات | طريقة الاتصال | عملة الأرباح |
+|---------|---------|---------------|-------------|
+| **Solana** | Raydium, Pump.fun | gRPC Geyser | SOL |
+| **Base** | Uniswap V3, Aerodrome, Virtuals.io | WebSocket | ETH |
+| **Sui** | Cetus, BlueMove, DeepBook | Event Sub | SUI |
+| **BNB** | PancakeSwap | WebSocket | BNB |
+| **Hyperliquid** | Native DEX | REST API | USDC |
 
 ---
 
-## Supported Chains & DEXs
+## 💰 كيف تتحول الأرباح إليك
 
-| Chain | DEXs | Connection Method |
-|-------|------|-------------------|
-| **Solana** | Raydium AMM V4/CPMM/CLMM, Pump.fun | gRPC Geyser (Helius/Triton) + WebSocket |
-| **Base** | Uniswap V3, Aerodrome, Virtuals.io | WebSocket event subscription |
-| **Sui** | Cetus CLMM, BlueMove | SuiEvent subscription + polling |
-| **BNB Chain** | PancakeSwap V2/V3 | WebSocket event subscription |
+### آلية الربح:
+
+```
+1. البوت يكتشف عملة جديدة          ← خلال 100ms من إنشائها
+2. يفحصها أمنياً (هل هي آمنة؟)     ← خلال 5ms
+3. يشتريها من محفظتك               ← يدفع SOL/ETH/BNB/SUI من رصيدك
+4. يراقب السعر لحظياً              ← كل ثانية
+5. يبيعها تلقائياً عند:
+   • ارتفاع 100% (Take Profit)     ← مثلاً: دفعت 0.5 SOL ← رجع 1 SOL
+   • أو هبوط 20% (Trailing Stop)   ← يحمي من الخسارة الكبيرة
+   • أو كشف rug pull              ← يبيع قبل سحب السيولة
+6. الناتج (SOL/ETH/...) يرجع لمحفظتك مباشرة ✅
+```
+
+### أين تذهب الأرباح؟
+
+| السلسلة | ماذا يحدث عند البيع | أين ينتهي الربح |
+|---------|---------------------|-----------------|
+| **Solana** | Swap Token → SOL | **محفظتك نفسها** (نفس Private Key) |
+| **Base** | Swap Token → WETH → ETH | **محفظتك على Base** |
+| **BNB** | Swap Token → WBNB → BNB | **محفظتك على BNB Chain** |
+| **Sui** | Swap Token → SUI | **محفظتك على Sui** |
+
+### ⚡ مهم: لا يوجد "تحويل" خارجي!
+
+**الأرباح لا تنتقل لمكان آخر** — البوت يستخدم **محفظتك أنت** (Private Key في `.env`).
+- كل عملية شراء = سحب من رصيدك
+- كل عملية بيع = إيداع في رصيدك
+- **أنت المالك الوحيد** — لا أحد آخر يملك وصولاً
+
+### 📊 مثال عملي:
+
+```
+رصيد البداية:     2.0 SOL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+صفقة 1: اشترى PEPE بـ 0.5 SOL → باع بـ 1.2 SOL  (ربح +0.7 SOL) ✅
+صفقة 2: اشترى DOGE بـ 0.5 SOL → باع بـ 0.4 SOL  (خسارة -0.1 SOL) ❌
+صفقة 3: اشترى MEME بـ 0.5 SOL → rug detected → باع بـ 0.45 SOL (إنقاذ!) 🛡️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+رصيد النهاية:     2.55 SOL  (ربح صافي +0.55 SOL)
+الرصيد يبقى في نفس المحفظة!
+```
+
+### 💸 سحب الأرباح لحسابك:
+
+عندما تريد سحب أرباحك:
+- **SOL** → حوّل من Phantom/Solflare لمنصة (Binance/OKX) → اسحب لحسابك البنكي
+- **ETH (Base)** → Bridge لـ Ethereum mainnet → بيع في منصة
+- **BNB** → أرسل مباشرة لـ Binance → سحب
+- **SUI** → أرسل لمنصة تدعم SUI → سحب
 
 ---
 
-## Features
+## خطوات التشغيل الكاملة
 
-### 🎯 Token Discovery (Scanner)
-- Real-time new pool detection within milliseconds of creation
-- Solana: gRPC Geyser plugin for `initialize2` instruction detection
-- EVM: WebSocket subscription to `PairCreated` / `PoolCreated` events
-- Sui: Move event filtering by Cetus/BlueMove package IDs
-
-### 🛡️ Security Auditing (Anti-Rug)
-- **<5ms** parallel security checks:
-  - Mint/Freeze Authority revocation (Solana)
-  - Contract ownership renouncement (EVM)
-  - LP token burn/lock verification
-  - Top 10 holder concentration analysis (max 15%)
-  - Bundled wallet detection
-  - Honeypot simulation (via Honeypot.is / GoPlus APIs)
-
-### ⚡ Ultra-Fast Execution (Sniper)
-- **Solana:** Jito Bundle API with dynamic tip calculation
-- **Base/BNB:** Private RPC / Flashbots with priority fee bribes
-- Front-running capability for both buy opportunities and rug protection
-
-### 🚨 Anti-Rug Mempool Monitor
-- Real-time mempool scanning for deployer `removeLiquidity` transactions
-- Automatic emergency sell BEFORE the rug pull executes
-- Monitors deployer wallet activity across all positions
-
-### 📊 Risk Management
-- Dynamic trailing stop-loss (adjusts with price growth)
-- Configurable take-profit targets
-- Daily loss limits with automatic trading pause
-- Full PnL tracking and win rate statistics
-
-### 📝 Paper Trading
-- Full simulation engine with realistic slippage modeling
-- Virtual execution matching real-time conditions
-- Sharpe ratio calculation and performance analytics
-
-### 🌐 Bilingual Interface (AR/EN)
-- Complete Arabic and English translation system
-- Toggle language via Telegram `/lang` command
-- RTL support for Arabic log output
+### المتطلبات:
+- Node.js 18+ (مُثبت)
+- خادم VPS (موصى: US-East لقرب Jito)
+- محفظة مموّلة
+- حساب RPC (Helius/Alchemy)
 
 ---
 
-## Setup Guide
-
-### Prerequisites
-
-- **Node.js** >= 18.0.0
-- **npm** or **yarn**
-- RPC endpoints for target chains
-- Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
-
-### Step 1: Clone & Install
+### الخطوة 1: تحميل المشروع
 
 ```bash
 git clone https://github.com/sun9shine/trad.git
@@ -145,230 +144,295 @@ cd trad
 npm install
 ```
 
-### Step 2: Configure Environment
+---
+
+### الخطوة 2: إنشاء ملف الإعدادات
 
 ```bash
 cp .env.example .env
+nano .env   # أو أي محرر نصوص
 ```
 
-Edit `.env` with your credentials (see [Configuration](#configuration) below).
+---
 
-### Step 3: Setup RPC Endpoints
-
-#### Solana (Recommended: Helius gRPC)
-
-1. Sign up at [Helius](https://helius.dev) or [Triton](https://triton.one)
-2. Get a dedicated gRPC endpoint with Geyser plugin access
-3. Set `SOLANA_GRPC_URL` and `SOLANA_GRPC_TOKEN` in `.env`
-4. For standard RPC, use a dedicated node (Helius/QuickNode/Alchemy)
+### الخطوة 3: تعبئة الإعدادات الأساسية
 
 ```env
+# ═══════════════════════════════════════
+# الإعدادات الأساسية (مطلوبة)
+# ═══════════════════════════════════════
+
+# اللغة: ar (عربي) أو en (إنجليزي)
+LANGUAGE=ar
+
+# الوضع: paper (محاكاة) أو live (حقيقي)
+# ⚠️ ابدأ دائماً بـ paper!
+TRADING_MODE=paper
+
+# ═══════════════════════════════════════
+# سولانا (الأهم - أكثر العملات الميمية)
+# ═══════════════════════════════════════
+
+# من https://helius.dev (سجّل واحصل على مفتاح مجاني)
 SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
+SOLANA_WS_URL=wss://mainnet.helius-rpc.com/?api-key=YOUR_KEY
+
+# gRPC (اشتراك Helius مدفوع ~$100/شهر - يعطي سرعة أعلى)
 SOLANA_GRPC_URL=mainnet.helius-rpc.com:2053
-SOLANA_GRPC_TOKEN=YOUR_GRPC_TOKEN
-```
+SOLANA_GRPC_TOKEN=your-token
 
-#### Base (Recommended: Alchemy WebSocket)
+# مفتاح محفظتك (Base58 من Phantom: Settings → Export Private Key)
+SOLANA_PRIVATE_KEY=your-base58-private-key-here
 
-1. Sign up at [Alchemy](https://alchemy.com) or [QuickNode](https://quicknode.com)
-2. Create a Base Mainnet app
-3. Get WebSocket URL
-
-```env
-BASE_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
-BASE_WS_URL=wss://base-mainnet.g.alchemy.com/v2/YOUR_KEY
-```
-
-#### Sui
-
-1. Use the public fullnode or a dedicated provider
-2. For production, use [Shinami](https://shinami.com) or [BlockVision](https://blockvision.org)
-
-```env
-SUI_RPC_URL=https://fullnode.mainnet.sui.io:443
-SUI_WS_URL=wss://fullnode.mainnet.sui.io
-```
-
-#### BNB Chain
-
-1. Use [NodeReal](https://nodereal.io) or [Ankr](https://ankr.com) for dedicated nodes
-
-```env
-BNB_RPC_URL=https://bsc-dataseed1.binance.org
-BNB_WS_URL=wss://bsc-ws-node.nariox.org
-```
-
-### Step 4: Setup Jito (Solana MEV)
-
-1. No API key needed for bundle submission
-2. Configure tip amount based on network congestion:
-
-```env
+# Jito (مجاني - لا يحتاج تسجيل)
 JITO_BLOCK_ENGINE_URL=https://mainnet.block-engine.jito.wtf
 JITO_DEFAULT_TIP_LAMPORTS=10000
-```
 
-### Step 5: Setup Telegram Bot
+# ═══════════════════════════════════════
+# Base Chain (عملات ميمية على Layer 2)
+# ═══════════════════════════════════════
 
-1. Message [@BotFather](https://t.me/BotFather) on Telegram
-2. Create a new bot: `/newbot`
-3. Copy the token
-4. Get your Chat ID from [@userinfobot](https://t.me/userinfobot)
+# من https://alchemy.com (خطة مجانية)
+BASE_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
+BASE_WS_URL=wss://base-mainnet.g.alchemy.com/v2/YOUR_KEY
+BASE_PRIVATE_KEY=0xYOUR_EVM_PRIVATE_KEY
+BASE_FLASHBOTS_RPC=https://rpc.flashbots.net
 
-```env
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+# ═══════════════════════════════════════
+# Sui
+# ═══════════════════════════════════════
+SUI_RPC_URL=https://fullnode.mainnet.sui.io:443
+SUI_WS_URL=wss://fullnode.mainnet.sui.io
+SUI_PRIVATE_KEY=your-hex-private-key
+
+# ═══════════════════════════════════════
+# BNB Chain
+# ═══════════════════════════════════════
+BNB_RPC_URL=https://bsc-dataseed1.binance.org
+BNB_WS_URL=wss://bsc-ws-node.nariox.org
+BNB_PRIVATE_KEY=0xYOUR_PRIVATE_KEY
+
+# ═══════════════════════════════════════
+# تيليجرام (للإشعارات)
+# ═══════════════════════════════════════
+
+# أنشئ بوت عبر @BotFather في تيليجرام
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNO
+# احصل على ID من @userinfobot
 TELEGRAM_CHAT_ID=your-chat-id
+
+# ═══════════════════════════════════════
+# إدارة المخاطر
+# ═══════════════════════════════════════
+
+# حد الشراء لكل صفقة
+MAX_BUY_AMOUNT_SOL=0.5
+MAX_BUY_AMOUNT_ETH=0.1
+MAX_BUY_AMOUNT_SUI=50
+
+# متى يبيع تلقائياً
+TRAILING_STOP_PERCENT=20       # يبيع إذا هبط 20% من أعلى سعر
+TAKE_PROFIT_PERCENT=100        # يبيع عند ربح 100% (2x)
+MAX_SLIPPAGE_PERCENT=15        # أقصى انزلاق مقبول
+
+# فلتر الأمان
+MAX_TOP10_HOLDER_PERCENT=15    # رفض إذا أكبر 10 حاملين > 15%
+REQUIRE_MINT_REVOKED=true      # رفض إذا السك لم يُلغَ
+REQUIRE_LP_LOCKED=true         # رفض إذا السيولة غير مقفلة
 ```
 
-### Step 6: Fund Wallets
+---
 
-Ensure your trading wallets have sufficient balance:
-- **Solana:** At least 1 SOL (for buys + Jito tips + rent)
-- **Base:** At least 0.5 ETH (for buys + gas)
-- **Sui:** At least 100 SUI (for buys + gas)
-- **BNB:** At least 1 BNB (for buys + gas)
+### الخطوة 4: تمويل المحافظ
+
+| السلسلة | الحد الأدنى | الموصى | من أين؟ |
+|---------|-------------|--------|---------|
+| **SOL** | 0.5 SOL | 2+ SOL | Phantom → إيداع من منصة |
+| **ETH (Base)** | 0.05 ETH | 0.3+ ETH | Bridge من Ethereum أو منصة تدعم Base |
+| **SUI** | 10 SUI | 100+ SUI | Sui Wallet → إيداع |
+| **BNB** | 0.2 BNB | 1+ BNB | MetaMask → إيداع |
 
 ---
 
-## Configuration
-
-### Key Parameters in `.env`
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `LANGUAGE` | Interface language (`en` / `ar`) | `en` |
-| `TRADING_MODE` | `paper` (simulation) or `live` | `paper` |
-| `MAX_BUY_AMOUNT_SOL` | Max SOL per trade | `0.5` |
-| `MAX_BUY_AMOUNT_ETH` | Max ETH per trade | `0.1` |
-| `TRAILING_STOP_PERCENT` | Trailing stop-loss percentage | `20` |
-| `TAKE_PROFIT_PERCENT` | Take profit percentage | `100` |
-| `MAX_SLIPPAGE_PERCENT` | Maximum allowed slippage | `15` |
-| `MAX_TOP10_HOLDER_PERCENT` | Max top-10 holder concentration | `15` |
-| `REQUIRE_MINT_REVOKED` | Require mint authority revoked | `true` |
-| `REQUIRE_LP_LOCKED` | Require LP locked/burned | `true` |
-
----
-
-## Running the Bot
-
-### Paper Trading Mode (Recommended First)
+### الخطوة 5: التشغيل (وضع المحاكاة أولاً!)
 
 ```bash
-# Start in paper trading (simulation)
+# ━━━ المرحلة 1: محاكاة (3-7 أيام) ━━━
+# لا يخاطر بأموال حقيقية - يرسل إشعارات كأنه يتداول
 npm run paper
-```
 
-### Development Mode
+# ━━━ المرحلة 2: مبالغ صغيرة ━━━
+# عدّل .env:
+# TRADING_MODE=live
+# MAX_BUY_AMOUNT_SOL=0.05
+npm start
 
-```bash
-npm run dev
-```
-
-### Production Mode
-
-```bash
-npm run build
+# ━━━ المرحلة 3: تشغيل كامل ━━━
+# بعد التأكد من الأداء:
+# MAX_BUY_AMOUNT_SOL=0.5
 npm start
 ```
 
-### Using PM2 (Production)
+---
+
+### الخطوة 6: المراقبة
 
 ```bash
-npm install -g pm2
-pm2 start dist/index.js --name trad-bot
-pm2 logs trad-bot
+# مراقبة السجلات
+tail -f logs/combined.log
+
+# لوحة المعلومات (متصفح)
+# افتح: http://your-server:3848
+
+# فحص الصحة
+curl http://localhost:3847/health
+
+# مقاييس Prometheus
+curl http://localhost:3847/metrics
 ```
 
 ---
 
-## Telegram Commands
+### الخطوة 7: النشر الدائم (VPS)
 
-| Command | Description | الوصف |
-|---------|-------------|-------|
-| `/start` | Show help menu | عرض قائمة المساعدة |
-| `/status` | Bot status & daily PnL | حالة البوت والربح اليومي |
-| `/positions` | List active positions | عرض المراكز النشطة |
-| `/pnl` | Detailed PnL report | تقرير الأرباح المفصل |
-| `/pause` | Pause scanning | إيقاف المسح مؤقتاً |
-| `/resume` | Resume scanning | استئناف المسح |
-| `/lang` | Toggle AR/EN language | تبديل اللغة عربي/إنجليزي |
+```bash
+# باستخدام PM2 (موصى)
+npm install -g pm2
+npm run build
+pm2 start dist/index.js --name trad-bot
+pm2 save
+pm2 startup   # يعيد التشغيل بعد إعادة تشغيل الخادم
+
+# أو باستخدام Docker
+docker-compose up -d
+docker logs -f trad-sniper-bot
+```
 
 ---
 
-## Project Structure
+## الإعدادات
+
+### إعدادات إدارة المخاطر (مهمة!)
+
+| الإعداد | الوصف | القيمة الافتراضية | نصيحة |
+|---------|-------|-------------------|-------|
+| `MAX_BUY_AMOUNT_SOL` | حد الشراء لكل صفقة | 0.5 SOL | ابدأ بـ 0.05 |
+| `TRAILING_STOP_PERCENT` | نسبة وقف الخسارة المتحرك | 20% | 15-30% |
+| `TAKE_PROFIT_PERCENT` | نسبة جني الأرباح | 100% | 50-200% |
+| `MAX_SLIPPAGE_PERCENT` | أقصى انزلاق | 15% | 10-20% |
+| `REQUIRE_MINT_REVOKED` | رفض إذا السك لم يُلغَ | true | أبقِه true |
+| `REQUIRE_LP_LOCKED` | رفض إذا السيولة غير مقفلة | true | أبقِه true |
+
+### كيف يعمل Trailing Stop (الوقف المتحرك):
+
+```
+اشتريت بسعر: 1.0
+━━━━━━━━━━━━━━━━━━━━
+السعر يرتفع → 1.5 → وقف الخسارة يصعد لـ 1.2 (20% تحت)
+السعر يرتفع → 2.0 → وقف الخسارة يصعد لـ 1.6
+السعر يرتفع → 3.0 → وقف الخسارة يصعد لـ 2.4
+السعر يهبط → 2.4 → يبيع! ← ربح 140%
+
+بدون Trailing Stop: كان ممكن يرجع لـ 0.5 وتخسر 50%
+```
+
+---
+
+## أوامر تيليجرام
+
+| الأمر | الوصف |
+|-------|-------|
+| `/start` | عرض قائمة الأوامر |
+| `/status` | حالة البوت + الربح اليومي |
+| `/positions` | المراكز المفتوحة حالياً |
+| `/pnl` | تقرير الأرباح والخسائر |
+| `/pause` | إيقاف مؤقت (يتوقف عن الشراء) |
+| `/resume` | استئناف (يعود للعمل) |
+| `/lang` | تبديل اللغة عربي/إنجليزي |
+
+---
+
+## تحذيرات أمنية
+
+### ⚠️ مهم جداً:
+
+1. **لا تشارك `.env` أبداً** — يحتوي مفاتيحك الخاصة
+2. **ابدأ بوضع Paper** — تأكد البوت يعمل قبل المخاطرة
+3. **استخدم محفظة منفصلة** — لا تستخدم محفظتك الرئيسية
+4. **ابدأ بمبالغ صغيرة** — 0.05 SOL كحد أقصى في البداية
+5. **VPS آمن** — استخدم خادم بحماية SSH key
+6. **لا تضع أكثر مما تتحمل خسارته** — سوق العملات الميمية خطير
+
+### 🔒 أين تكون محفظتك آمنة؟
+
+```
+✅ المفتاح في .env على خادمك فقط
+✅ .env مضاف في .gitignore (لن يُرفع لـ GitHub)
+✅ يمكنك تشفيره عبر Key Vault المدمج:
+   VAULT_MASTER_PASSWORD=your-strong-password
+```
+
+### 📍 موقع VPS الأمثل:
+
+| السلسلة | أفضل موقع | السبب |
+|---------|-----------|-------|
+| Solana | US-East (Virginia) | قريب من Jito Block Engines |
+| Base/ETH | US-East أو EU-West | قريب من Alchemy/Infura |
+| BNB | Singapore | قريب من خوادم Binance |
+
+---
+
+## هيكل المشروع
 
 ```
 trad/
 ├── src/
-│   ├── index.ts              # Main orchestrator & entry point
-│   ├── config/
-│   │   └── index.ts          # Environment & configuration management
-│   ├── i18n/
-│   │   ├── index.ts          # Translation engine
-│   │   ├── types.ts          # Translation type definitions
-│   │   ├── en.ts             # English dictionary
-│   │   └── ar.ts             # Arabic dictionary
-│   ├── scanner/
-│   │   ├── index.ts          # Scanner orchestrator
-│   │   ├── base-scanner.ts   # Abstract base scanner class
-│   │   ├── solana-scanner.ts # Solana gRPC/WebSocket scanner
-│   │   ├── evm-scanner.ts    # Base/BNB WebSocket scanner
-│   │   └── sui-scanner.ts    # Sui event scanner
-│   ├── security/
-│   │   ├── index.ts          # Security module exports
-│   │   ├── auditor.ts        # Main audit orchestrator
-│   │   ├── solana-auditor.ts # SPL token security checks
-│   │   ├── evm-auditor.ts    # ERC-20 contract checks
-│   │   └── sui-auditor.ts    # Move module checks
-│   ├── sniper/
-│   │   ├── index.ts          # Sniper module exports
-│   │   ├── solana-sniper.ts  # Jito bundle execution
-│   │   ├── evm-sniper.ts     # Flashbots/private RPC execution
-│   │   └── mempool-monitor.ts# Anti-rug mempool scanning
-│   ├── risk/
-│   │   ├── index.ts          # Risk module exports
-│   │   ├── position-manager.ts # Trailing stop & position tracking
-│   │   └── paper-trading.ts  # Simulation engine
-│   ├── telegram/
-│   │   └── bot.ts            # Telegram bot interface
-│   └── utils/
-│       ├── types.ts          # Shared type definitions
-│       ├── constants.ts      # Known addresses & program IDs
-│       └── logger.ts         # Winston logger with i18n
-├── .env.example              # Environment template
-├── package.json
-├── tsconfig.json
-└── README.md
+│   ├── index.ts                 # المنسق الرئيسي v2
+│   ├── config/                  # إدارة الإعدادات
+│   ├── i18n/                    # نظام الترجمة (عربي/إنجليزي)
+│   ├── scanner/                 # اكتشاف العملات الجديدة
+│   │   ├── solana-scanner.ts    # Geyser gRPC
+│   │   ├── evm-scanner.ts       # Base/BNB WebSocket
+│   │   ├── sui-scanner.ts       # Sui Events
+│   │   └── virtuals-scanner.ts  # Virtuals.io
+│   ├── security/                # التدقيق الأمني (<5ms)
+│   ├── sniper/                  # محركات التنفيذ
+│   │   ├── solana-sniper.ts     # Jito Bundles
+│   │   ├── evm-sniper.ts        # V3 Router + Tenderly + Tax
+│   │   ├── sui-sniper.ts        # Cetus SDK + DeepBook
+│   │   ├── hyperliquid-sniper.ts
+│   │   ├── tenderly-sim.ts      # محاكاة قبل التنفيذ
+│   │   ├── uniswap-router.ts    # توجيه متعدد القفزات
+│   │   ├── tax-simulator.ts     # كشف الضرائب
+│   │   ├── cetus-sdk.ts         # تكامل Cetus
+│   │   └── deepbook-v2.ts       # دفتر أوامر Sui
+│   ├── risk/                    # إدارة المخاطر
+│   ├── price-feed/              # أسعار حية
+│   ├── database/                # تخزين الصفقات
+│   ├── telegram/                # بوت تيليجرام
+│   ├── dashboard/               # لوحة معلومات WebSocket
+│   ├── health/                  # فحص الصحة + Prometheus
+│   └── utils/                   # أدوات مساعدة
+├── tests/                       # اختبارات
+├── .env.example                 # قالب الإعدادات
+├── Dockerfile                   # حاوية Docker
+├── docker-compose.yml           # نشر مع Redis
+└── .github/workflows/ci.yml     # CI/CD
 ```
 
 ---
 
-## Security Considerations
+## الرخصة والإخلاء
 
-⚠️ **CRITICAL WARNINGS:**
+MIT License - استخدام على مسؤوليتك الخاصة.
 
-1. **Private Keys:** NEVER commit `.env` to version control. It contains your private keys.
-2. **Paper Trading First:** Always test with `TRADING_MODE=paper` before using real funds.
-3. **Start Small:** Begin with minimal amounts (`MAX_BUY_AMOUNT_SOL=0.1`).
-4. **Dedicated Wallets:** Use separate wallets for trading - never your main wallet.
-5. **VPS Deployment:** Run on a low-latency VPS close to RPC endpoints for speed.
-6. **Rate Limits:** Be aware of RPC rate limits; use dedicated/paid endpoints.
-
-### Recommended VPS Locations
-- **Solana:** US East (close to Jito block engines)
-- **Base/BNB:** US East or EU West (close to Alchemy/Infura nodes)
+**تحذير:** تداول العملات المشفرة ينطوي على مخاطر مالية كبيرة. هذا البرنامج لأغراض تعليمية. لا تستثمر أكثر مما يمكنك تحمل خسارته.
 
 ---
 
-## License
+## الدعم
 
-MIT License - Use at your own risk. This software is for educational purposes.
-Trading cryptocurrency involves substantial risk of financial loss.
-
----
-
-## Disclaimer
-
-This bot is provided as-is for educational and research purposes. The authors are not responsible for any financial losses incurred from using this software. Always do your own research and never invest more than you can afford to lose.
-
-هذا البوت مقدم كما هو لأغراض تعليمية وبحثية. المؤلفون غير مسؤولين عن أي خسائر مالية ناتجة عن استخدام هذا البرنامج. قم دائماً بإجراء بحثك الخاص ولا تستثمر أكثر مما يمكنك تحمل خسارته.
+- **تيليجرام:** أوامر `/help` داخل البوت
+- **السجلات:** `logs/combined.log`
+- **لوحة المعلومات:** `http://server:3848`
+- **الصحة:** `http://server:3847/health`
